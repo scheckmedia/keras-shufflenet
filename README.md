@@ -1,4 +1,4 @@
-# Keras SqueezeNet [![Build Status](https://travis-ci.org/scheckmedia/keras-shufflenet.svg?branch=master)](https://travis-ci.org/scheckmedia/keras-shufflenet)
+# Keras ShuffleNet [![Build Status](https://travis-ci.org/scheckmedia/keras-shufflenet.svg?branch=master)](https://travis-ci.org/scheckmedia/keras-shufflenet)
 ShuffleNet Implementation using Keras Functional Framework 2.0
 
 Currently there is no pretrained model but a training for groups=3 is in progress
