@@ -1,0 +1,7 @@
+temp/
+test/
+.idea/
+*.pyc
+model/
+dist/
+*.egg-info
