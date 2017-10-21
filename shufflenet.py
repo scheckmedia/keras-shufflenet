@@ -8,7 +8,7 @@ from keras.applications.mobilenet import DepthwiseConv2D
 import numpy as np
 
 
-def ShuffleNet(include_top=True, input_tensor=None, scale_factor=1.0, pooling=None,
+def ShuffleNet(include_top=True, input_tensor=None, scale_factor=1.0, pooling='max',
                input_shape=(224,224,3), groups=1, load_model=None, num_shuffle_units=[3, 7, 3],
                bottleneck_ratio=0.25, classes=1000):
     """
@@ -78,7 +78,7 @@ def ShuffleNet(include_top=True, input_tensor=None, scale_factor=1.0, pooling=No
 
     input_shape = _obtain_input_shape(input_shape,
                                       default_size=224,
-                                      min_size=48,
+                                      min_size=28,
                                       require_flatten=include_top,
                                       data_format=K.image_data_format())
 
@@ -86,13 +86,15 @@ def ShuffleNet(include_top=True, input_tensor=None, scale_factor=1.0, pooling=No
     if groups not in out_dim_stage_two:
         raise ValueError("Invalid number of groups.")
 
+    if pooling not in ['max','avg']:
+        raise ValueError("Invalid value for pooling.")
+
     exp = np.insert(np.arange(0, len(num_shuffle_units), dtype=np.float32), 0, 0)
     out_channels_in_stage = 2 ** exp
     out_channels_in_stage *= out_dim_stage_two[groups]  # calculate output channels for each stage
     out_channels_in_stage[0] = 24  # first stage has always 24 output channels
     out_channels_in_stage *= scale_factor
     out_channels_in_stage = out_channels_in_stage.astype(int)
-
 
     if input_tensor is None:
         img_input = Input(shape=input_shape)
@@ -104,7 +106,7 @@ def ShuffleNet(include_top=True, input_tensor=None, scale_factor=1.0, pooling=No
 
     # create shufflenet architecture
     x = Conv2D(filters=out_channels_in_stage[0], kernel_size=(3, 3), padding='same',
-               strides=(2, 2), activation="relu", name="conv1")(img_input)
+               use_bias=False, strides=(2, 2), activation="relu", name="conv1")(img_input)
     x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='same', name="maxpool1")(x)
 
     # create stages containing shufflenet units beginning at stage 2
@@ -114,15 +116,15 @@ def ShuffleNet(include_top=True, input_tensor=None, scale_factor=1.0, pooling=No
                    bottleneck_ratio=bottleneck_ratio,
                    groups=groups, stage=stage + 2)
 
-    if include_top:
+    if pooling == 'avg':
         x = GlobalAveragePooling2D(name="global_pool")(x)
+    elif pooling == 'max':
+        x = GlobalMaxPooling2D(name="global_pool")(x)
+
+    if include_top:
         x = Dense(units=classes, name="fc")(x)
         x = Activation('softmax', name='softmax')(x)
-    else:
-        if pooling == 'avg':
-            x = GlobalAveragePooling2D(name="global_avg_pool")(x)
-        elif pooling == 'max':
-            x = GlobalMaxPooling2D(name="global_max_pool")(x)
+
 
     if input_tensor is not None:
         inputs = get_source_inputs(input_tensor)
@@ -132,8 +134,7 @@ def ShuffleNet(include_top=True, input_tensor=None, scale_factor=1.0, pooling=No
     model = Model(inputs=inputs, outputs=x, name=name)
 
     if load_model is not None:
-        model.load_weights(load_model["model_path"],
-                           by_name=load_model.get("by_name", True))
+        model.load_weights('', by_name=True)
 
     return model
 
@@ -225,15 +226,16 @@ def _shuffle_unit(inputs, in_channels, out_channels, groups, bottleneck_ratio, s
     x = _group_conv(inputs, in_channels, out_channels=bottleneck_channels,
                     groups=(1 if stage == 2 and block == 1 else groups),
                     name='%s/1x1_gconv_1' % prefix)
-    x = BatchNormalization(axis=bn_axis, scale=False, name='%s/bn_gconv_1' % prefix)(x)
+    x = BatchNormalization(axis=bn_axis, name='%s/bn_gconv_1' % prefix)(x)
     x = Activation('relu', name='%s/relu_gconv_1' % prefix)(x)
 
     x = Lambda(channel_shuffle, arguments={'groups': groups}, name='%s/channel_shuffle' % prefix)(x)
-    x = DepthwiseConv2D(kernel_size=(3, 3), padding="same", strides=strides, name='%s/1x1_dwconv_1' % prefix)(x)
-    x = BatchNormalization(axis=bn_axis, scale=False, name='%s/bn_dwconv_1' % prefix)(x)
+    x = DepthwiseConv2D(kernel_size=(3, 3), padding="same", use_bias=False,
+                        strides=strides, name='%s/1x1_dwconv_1' % prefix)(x)
+    x = BatchNormalization(axis=bn_axis, name='%s/bn_dwconv_1' % prefix)(x)
 
     x = _group_conv(x, bottleneck_channels, out_channels=out_channels, groups=groups, name='%s/1x1_gconv_2' % prefix)
-    x = BatchNormalization(axis=bn_axis, scale=False, name='%s/bn_gconv_2' % prefix)(x)
+    x = BatchNormalization(axis=bn_axis,name='%s/bn_gconv_2' % prefix)(x)
 
     if strides < 2:
         ret = Add(name='%s/add' % prefix)([x, inputs])
@@ -279,7 +281,7 @@ def _group_conv(x, in_channels, out_channels, groups, kernel=1, stride=1, name='
     """
     if groups == 1:
         return Conv2D(filters=out_channels, kernel_size=kernel, padding='same',
-                      strides=stride, name=name)(x)
+                      use_bias=False, strides=stride, name=name)(x)
 
     assert not out_channels % groups
 
@@ -291,8 +293,8 @@ def _group_conv(x, in_channels, out_channels, groups, kernel=1, stride=1, name='
         offset = i * ig
         group = Lambda(lambda z: z[:, :, :, offset: offset + ig], name='%s/g%d_slice' % (name, i))(x)
         group_list.append(Conv2D(out_channels // groups, kernel_size=kernel, strides=stride,
-                                 padding='same', name='%s_/g%d' % (name, i))(group))
-    return Concatenate(name='%s_concat' % name)(group_list)
+                                 use_bias=False, padding='same', name='%s_/g%d' % (name, i))(group))
+    return Concatenate(name='%s/concat' % name)(group_list)
 
 
 def channel_shuffle(x, groups):
