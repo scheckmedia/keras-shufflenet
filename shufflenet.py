@@ -89,6 +89,9 @@ def ShuffleNet(include_top=True, input_tensor=None, scale_factor=1.0, pooling='m
     if pooling not in ['max','avg']:
         raise ValueError("Invalid value for pooling.")
 
+    if not (float(scale_factor) * 4).is_integer():
+        raise ValueError("Invalid value for scale_factor. Should be x over 4.")
+
     exp = np.insert(np.arange(0, len(num_shuffle_units), dtype=np.float32), 0, 0)
     out_channels_in_stage = 2 ** exp
     out_channels_in_stage *= out_dim_stage_two[groups]  # calculate output channels for each stage
@@ -208,8 +211,6 @@ def _shuffle_unit(inputs, in_channels, out_channels, groups, bottleneck_ratio, s
     -------
 
     """
-
-
     if K.image_data_format() == 'channels_last':
         bn_axis = -1
     else:
@@ -222,6 +223,7 @@ def _shuffle_unit(inputs, in_channels, out_channels, groups, bottleneck_ratio, s
 
     # default: 1/4 of the output channel of a ShuffleNet Unit
     bottleneck_channels = int(out_channels * bottleneck_ratio)
+    groups = (1 if stage == 2 and block == 1 else groups)
 
     x = _group_conv(inputs, in_channels, out_channels=bottleneck_channels,
                     groups=(1 if stage == 2 and block == 1 else groups),
@@ -283,8 +285,6 @@ def _group_conv(x, in_channels, out_channels, groups, kernel=1, stride=1, name='
         return Conv2D(filters=out_channels, kernel_size=kernel, padding='same',
                       use_bias=False, strides=stride, name=name)(x)
 
-    assert not out_channels % groups
-
     # number of intput channels per group
     ig = in_channels // groups
     group_list = []
@@ -292,7 +292,7 @@ def _group_conv(x, in_channels, out_channels, groups, kernel=1, stride=1, name='
     for i in range(groups):
         offset = i * ig
         group = Lambda(lambda z: z[:, :, :, offset: offset + ig], name='%s/g%d_slice' % (name, i))(x)
-        group_list.append(Conv2D(out_channels // groups, kernel_size=kernel, strides=stride,
+        group_list.append(Conv2D(int(0.5 + out_channels / groups), kernel_size=kernel, strides=stride,
                                  use_bias=False, padding='same', name='%s_/g%d' % (name, i))(group))
     return Concatenate(name='%s/concat' % name)(group_list)
 
@@ -333,4 +333,3 @@ def channel_shuffle(x, groups):
     x = K.reshape(x, [-1, height, width, in_channels])
 
     return x
-
