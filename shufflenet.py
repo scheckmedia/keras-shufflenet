@@ -218,8 +218,8 @@ def _shuffle_unit(inputs, in_channels, out_channels, groups, bottleneck_ratio, s
 
     prefix = 'stage%d/block%d' % (stage, block)
 
-    if strides >= 2:
-        out_channels -= in_channels
+    #if strides >= 2:
+        #out_channels -= in_channels
 
     # default: 1/4 of the output channel of a ShuffleNet Unit
     bottleneck_channels = int(out_channels * bottleneck_ratio)
@@ -236,8 +236,9 @@ def _shuffle_unit(inputs, in_channels, out_channels, groups, bottleneck_ratio, s
                         strides=strides, name='%s/1x1_dwconv_1' % prefix)(x)
     x = BatchNormalization(axis=bn_axis, name='%s/bn_dwconv_1' % prefix)(x)
 
-    x = _group_conv(x, bottleneck_channels, out_channels=out_channels, groups=groups, name='%s/1x1_gconv_2' % prefix)
-    x = BatchNormalization(axis=bn_axis,name='%s/bn_gconv_2' % prefix)(x)
+    x = _group_conv(x, bottleneck_channels, out_channels=out_channels if strides == 1 else out_channels - in_channels,
+                    groups=groups, name='%s/1x1_gconv_2' % prefix)
+    x = BatchNormalization(axis=bn_axis, name='%s/bn_gconv_2' % prefix)(x)
 
     if strides < 2:
         ret = Add(name='%s/add' % prefix)([x, inputs])
@@ -288,6 +289,8 @@ def _group_conv(x, in_channels, out_channels, groups, kernel=1, stride=1, name='
     # number of intput channels per group
     ig = in_channels // groups
     group_list = []
+
+    assert out_channels % groups == 0
 
     for i in range(groups):
         offset = i * ig
