@@ -2,7 +2,7 @@
 ShuffleNet Implementation using Keras Functional Framework 2.0
 
 There is a [weight file](weigths/ShuffleNet_1X_g3_br_0.25_373.hdf5) for groups=3 but I was not able to reproduce the accuracy from the paper.
-Current accuracy is **0.5228**.
+Current accuracy for ImageNet is **0.5228**.
 
 
 ### Library Versions
