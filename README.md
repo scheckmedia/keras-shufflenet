@@ -13,7 +13,7 @@ Current accuracy for ImageNet is **0.5228**.
 
 ### References
 
-1) [Keras Framework](www.keras.io)
+1) [Keras Framework](https://www.keras.io)
 
 2) [ShuffleNet Paper](https://arxiv.org/pdf/1707.01083.pdf)
 
